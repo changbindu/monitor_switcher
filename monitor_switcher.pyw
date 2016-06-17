@@ -1,7 +1,9 @@
-from PyQt5.QtWidgets import QApplication, QDialog, QHBoxLayout, QLayout, QGridLayout, QListWidgetItem, QListWidget, QListView, QPushButton, QMenu, QAction, QLabel, QLineEdit
+from PyQt5.QtWidgets import QApplication, QDialog, QHBoxLayout, QLayout, QGridLayout, QListWidgetItem, QListWidget, \
+    QListView, QPushButton, QMenu, QAction, QLabel, QLineEdit, QMessageBox
 from PyQt5.QtCore import QDate, QSize, Qt, QSettings
 from PyQt5.QtGui import QIcon
 import paramiko
+import traceback
 import os
 import sys
 
@@ -18,7 +20,7 @@ class MonitorSource:
 
 
 class LinuxMonitorSource(MonitorSource):
-    def __init__(self, name, address, username, password):
+    def __init__(self, name, address = None, username = None, password = None):
         self.address = address
         self.username = username
         self.password = password
@@ -48,8 +50,7 @@ class WindowsMonitorSource(MonitorSource):
 
     def __local_cmd(self, command):
         print("execute local command %s" % command)
-        result = os.popen(command).readlines()
-        print(result)
+        os.system(command)
 
     def open(self):
         self.__local_cmd("displayswitch.exe /extend")
@@ -59,25 +60,29 @@ class WindowsMonitorSource(MonitorSource):
 
 
 class SettingsDialog(QDialog):
+    ADDRESS = "linux/address"
+    USERNAME = "linux/username"
+    PASSWORD = "linux/password"
+
     def __init__(self, qsettings, parent=None):
         super(SettingsDialog, self).__init__(parent)
 
         self.qsettings = qsettings
 
-        addresslabel = QLabel("Linux Desktop Address:")
+        addressLabel = QLabel("Linux Desktop Address:")
         self.addressEdit = QLineEdit()
-        addresslabel.setBuddy(self.addressEdit)
-        self.addressEdit.setText(self.qsettings.value("linux/address"))
+        addressLabel.setBuddy(self.addressEdit)
+        self.addressEdit.setText(self.qsettings.value(self.ADDRESS))
 
-        usernamelabel = QLabel("Linux Desktop Username:")
+        usernameLabel = QLabel("Linux Desktop Username:")
         self.usernameEdit = QLineEdit()
-        usernamelabel.setBuddy(self.usernameEdit)
-        self.usernameEdit.setText(self.qsettings.value("linux/username"))
+        usernameLabel.setBuddy(self.usernameEdit)
+        self.usernameEdit.setText(self.qsettings.value(self.USERNAME))
 
-        passwordlabel = QLabel("Linux Desktop Password:")
+        passwordLabel = QLabel("Linux Desktop Password:")
         self.passwordEdit = QLineEdit()
-        passwordlabel.setBuddy(self.passwordEdit)
-        self.passwordEdit.setText(self.qsettings.value("linux/password"))
+        passwordLabel.setBuddy(self.passwordEdit)
+        self.passwordEdit.setText(self.qsettings.value(self.PASSWORD))
         self.passwordEdit.setEchoMode(QLineEdit.Password)
 
         okButton = QPushButton("OK")
@@ -86,20 +91,23 @@ class SettingsDialog(QDialog):
 
         mainLayout = QGridLayout()
         mainLayout.setSizeConstraint(QLayout.SetFixedSize)
-        mainLayout.addWidget(addresslabel, 0, 0)
+        mainLayout.addWidget(addressLabel, 0, 0)
         mainLayout.addWidget(self.addressEdit, 0, 1)
-        mainLayout.addWidget(usernamelabel, 1, 0)
+        mainLayout.addWidget(usernameLabel, 1, 0)
         mainLayout.addWidget(self.usernameEdit, 1, 1)
-        mainLayout.addWidget(passwordlabel, 2, 0)
+        mainLayout.addWidget(passwordLabel, 2, 0)
         mainLayout.addWidget(self.passwordEdit, 2, 1)
         mainLayout.addWidget(okButton, 3, 1)
         self.setLayout(mainLayout)
 
+        self.setWindowTitle("Configurate your Linux Destop Access")
+
     def save_settings(self):
-        self.qsettings.setValue("linux/address", self.addressEdit.text());
-        self.qsettings.setValue("linux/username", self.usernameEdit.text());
-        self.qsettings.setValue("linux/password", self.passwordEdit.text());
+        self.qsettings.setValue(self.ADDRESS, self.addressEdit.text());
+        self.qsettings.setValue(self.PASSWORD, self.usernameEdit.text());
+        self.qsettings.setValue(self.PASSWORD, self.passwordEdit.text());
         self.close()
+
 
 class MonitorSwitcher(QDialog):
     def __init__(self, parent=None):
@@ -125,7 +133,7 @@ class MonitorSwitcher(QDialog):
 
         self.setLayout(horizontalLayout)
         self.setWindowTitle("MonitorSwitcher - Switch display of shared monitor")
-        #self.setWindowFlags(Qt.WindowStaysOnTopHint)
+        # self.setWindowFlags(Qt.WindowStaysOnTopHint)
 
         self.setContextMenuPolicy(Qt.CustomContextMenu)
         self.customContextMenuRequested.connect(lambda point: self.popMenu.exec_(self.mapToGlobal(point)))
@@ -135,29 +143,52 @@ class MonitorSwitcher(QDialog):
         self.popMenu.addAction(settings_action)
 
         self.m_win = WindowsMonitorSource("Windows Laptop")
-        self.m_ubuntu = LinuxMonitorSource("Ubuntu Desktop",
-                                           self.qsettings.value("linux/address"),
-                                           self.qsettings.value("linux/username"),
-                                           self.qsettings.value("linux/password"))
+        self.m_ubuntu = LinuxMonitorSource("Ubuntu Desktop")
+        self.update_settings()
 
-    def on_context_menu_settings(self, point):
+    def update_settings(self):
+        self.m_ubuntu.address = self.qsettings.value(SettingsDialog.ADDRESS)
+        self.m_ubuntu.username = self.qsettings.value(SettingsDialog.USERNAME)
+        self.m_ubuntu.password = self.qsettings.value(SettingsDialog.PASSWORD)
+
+    def on_context_menu_settings(self, point = None):
         dialog = SettingsDialog(self.qsettings)
         dialog.exec_()
-        self.m_ubuntu.address = self.qsettings.value("linux/address")
-        self.m_ubuntu.username = self.qsettings.value("linux/username")
-        self.m_ubuntu.password = self.qsettings.value("linux/password")
+        self.update_settings()
+
+    def check_settings(self):
+        if (not self.m_ubuntu.address or not self.m_ubuntu.username or not self.m_ubuntu.password):
+            self.on_context_menu_settings()
+            if (not self.m_ubuntu.address or not self.m_ubuntu.username or not self.m_ubuntu.password):
+                return False
+            else:
+                return True
+        return True
 
     def switch_to_windows_monitor(self):
-        self.m_win.open()
-        self.m_ubuntu.close()
+        if (self.check_settings()):
+            try:
+                self.m_win.open()
+                self.m_ubuntu.close()
+            except Exception as e:
+                QMessageBox.critical(self, "Error happened, connection is okay?",
+                                     str(e) + "\n" + traceback.format_exc(),
+                                     QMessageBox.Ok)
+
 
     def switch_to_ubuntu_monitor(self):
-        self.m_win.close()
-        self.m_ubuntu.open()
-
+        if (self.check_settings()):
+            try:
+                self.m_win.close()
+                self.m_ubuntu.open()
+            except Exception as e:
+                QMessageBox.critical(self, "Error happened, connection is okay?",
+                                     str(e) + "\n" + traceback.format_exc(),
+                                     QMessageBox.Ok)
 
 if __name__ == '__main__':
     app = QApplication(sys.argv)
+    app.setWindowIcon(QIcon('app.ico'))
     ex = MonitorSwitcher()
     ex.show()
     sys.exit(app.exec_())
