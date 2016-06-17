@@ -133,7 +133,7 @@ class MonitorSwitcher(QDialog):
 
         self.setLayout(horizontalLayout)
         self.setWindowTitle("MonitorSwitcher - Switch display of shared monitor")
-        # self.setWindowFlags(Qt.WindowStaysOnTopHint)
+        self.setWindowFlags(self.windowFlags() | Qt.WindowMinimizeButtonHint)
 
         self.setContextMenuPolicy(Qt.CustomContextMenu)
         self.customContextMenuRequested.connect(lambda point: self.popMenu.exec_(self.mapToGlobal(point)))
